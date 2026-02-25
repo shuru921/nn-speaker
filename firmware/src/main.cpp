@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <WiFi.h>
+#include <Preferences.h>
 #include <driver/i2s.h>
 #include <esp_task_wdt.h>
 #include <esp_heap_caps.h>
@@ -77,6 +78,117 @@ i2s_pin_config_t i2s_speaker_pins = {
     .data_out_num = I2S_SPEAKER_SERIAL_DATA,
     .data_in_num = I2S_PIN_NO_CHANGE};
 
+static Preferences g_wifiPrefs;
+static String g_uartInputLine;
+
+static String trimCopy(const String &in)
+{
+  String out = in;
+  out.trim();
+  return out;
+}
+
+static void loadWifiCredentials(String &ssid, String &password)
+{
+  g_wifiPrefs.begin("wifi", true);
+  ssid = g_wifiPrefs.getString("ssid", WIFI_SSID);
+  password = g_wifiPrefs.getString("pass", WIFI_PSWD);
+  g_wifiPrefs.end();
+}
+
+static bool saveWifiCredentials(const String &ssid, const String &password)
+{
+  if (ssid.length() == 0)
+  {
+    return false;
+  }
+
+  g_wifiPrefs.begin("wifi", false);
+  bool okSsid = g_wifiPrefs.putString("ssid", ssid) > 0;
+  bool okPass = g_wifiPrefs.putString("pass", password) >= 0;
+  g_wifiPrefs.end();
+  return okSsid && okPass;
+}
+
+static void clearWifiCredentials()
+{
+  g_wifiPrefs.begin("wifi", false);
+  g_wifiPrefs.clear();
+  g_wifiPrefs.end();
+}
+
+static void processWifiUartCommand(const String &line)
+{
+  String command = trimCopy(line);
+  if (command.length() == 0)
+  {
+    return;
+  }
+
+  if (command.equalsIgnoreCase("WIFI HELP"))
+  {
+    Serial.println("UART WiFi commands:");
+    Serial.println("  WIFI SET <ssid>|<password>");
+    Serial.println("  WIFI SHOW");
+    Serial.println("  WIFI CLEAR");
+    return;
+  }
+
+  if (command.equalsIgnoreCase("WIFI SHOW"))
+  {
+    String ssid;
+    String password;
+    loadWifiCredentials(ssid, password);
+    Serial.printf("Stored SSID: %s\n", ssid.c_str());
+    Serial.printf("Stored password length: %d\n", password.length());
+    return;
+  }
+
+  if (command.equalsIgnoreCase("WIFI CLEAR"))
+  {
+    clearWifiCredentials();
+    Serial.println("Stored WiFi credentials cleared.");
+    return;
+  }
+
+  if (command.startsWith("WIFI SET "))
+  {
+    String payload = command.substring(strlen("WIFI SET "));
+    int sep = payload.indexOf('|');
+    if (sep <= 0)
+    {
+      Serial.println("Invalid format. Use: WIFI SET <ssid>|<password>");
+      return;
+    }
+
+    String ssid = trimCopy(payload.substring(0, sep));
+    String password = trimCopy(payload.substring(sep + 1));
+    if (ssid.length() == 0)
+    {
+      Serial.println("SSID cannot be empty.");
+      return;
+    }
+
+    if (saveWifiCredentials(ssid, password))
+    {
+      Serial.println("WiFi credentials saved.");
+      Serial.println("Reboot to apply.");
+    }
+    else
+    {
+      Serial.println("Failed to save WiFi credentials.");
+    }
+    return;
+  }
+
+  Serial.println("Unknown command. Type WIFI HELP");
+}
+
+static void handleUartWifiProvisioning(const String &line)
+{
+  processWifiUartCommand(line);
+}
+
 void es8388_init(void)
 {
     audiokit::AudioKit kit;
@@ -110,6 +222,7 @@ void setup()
   Serial.begin(115200);
   delay(1000);
   Serial.println("Starting up");
+  Serial.println("UART WiFi provisioning enabled. Type WIFI HELP and press Enter.");
 
 #ifdef BOARD_HAS_PSRAM
   // Prefer external RAM for generic malloc to keep internal RAM for TLS handshake.
@@ -118,13 +231,18 @@ void setup()
 
   // start up wifi
   // launch WiFi
+  String wifiSsid;
+  String wifiPassword;
+  loadWifiCredentials(wifiSsid, wifiPassword);
+  Serial.printf("Connecting to SSID: %s\n", wifiSsid.c_str());
+
   WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PSWD);
+  WiFi.begin(wifiSsid.c_str(), wifiPassword.c_str());
   if (WiFi.waitForConnectResult() != WL_CONNECTED)
   {
     Serial.println("Connection Failed! Rebooting...");
     delay(5000);
-    ESP.restart();
+    //ESP.restart();
   }
   Serial.printf("Total heap: %d\n", ESP.getHeapSize());
   Serial.printf("Free heap: %d\n", ESP.getFreeHeap());
@@ -182,5 +300,24 @@ void setup()
 
 void loop()
 {
-  vTaskDelay(1000);
+  while (Serial.available() > 0)
+  {
+    char ch = static_cast<char>(Serial.read());
+
+    if (ch == '\r' || ch == '\n')
+    {
+      if (g_uartInputLine.length() > 0)
+      {
+        Serial.println();
+        handleUartWifiProvisioning(g_uartInputLine);
+        g_uartInputLine = "";
+      }
+      continue;
+    }
+
+    g_uartInputLine += ch;
+    Serial.print(ch);
+  }
+
+  vTaskDelay(10);
 }
