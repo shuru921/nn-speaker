@@ -124,7 +124,7 @@ void setup()
   {
     Serial.println("Connection Failed! Rebooting...");
     delay(5000);
-    ESP.restart();
+    //ESP.restart();
   }
   Serial.printf("Total heap: %d\n", ESP.getHeapSize());
   Serial.printf("Free heap: %d\n", ESP.getFreeHeap());
