@@ -334,19 +334,28 @@ static void processLlmUartCommand(const String &line)
   }
 
   // Everything after "LLM " is the user message
-  if (command.startsWith("LLM "))
+  if (command.startsWith("LLM1 ")||command.startsWith("LLM2 "))
   {
-    String text = command.substring(strlen("LLM "));
+    String text = command.substring(strlen("LLM"));
     text.trim();
     if (text.length() == 0)
     {
-      Serial.println("Usage: LLM <text>");
+      Serial.println("Usage: LLM<ver> <text>");
       return;
     }
     Serial.printf("LLM: sending \"%s\" ...\n", text.c_str());
     unsigned long startTime = millis();
-
-    String reply = g_llm->chat(text.c_str());
+    String reply;
+    if (text[0] == '1') {
+      text = text.substring(1);
+      reply = g_llm->chatV1(text.c_str()+1);
+    } else if (text[0] == '2') {
+      text = text.substring(1);
+      reply = g_llm->chatV2(text.c_str()+1);
+    } else {
+      reply = g_llm->chatV2(text.c_str());
+    } 
+    
 
     unsigned long elapsed = millis() - startTime;
     if (reply.length() > 0)
@@ -368,7 +377,7 @@ static void processLlmUartCommand(const String &line)
 static void handleUartWifiProvisioning(const String &line)
 {
   String command = trimCopy(line);
-  if (command.startsWith("LLM ") || command.equalsIgnoreCase("LLM HELP"))
+  if (command.startsWith("LLM ") || command.startsWith("LLM1 ") || command.startsWith("LLM2 ") || command.equalsIgnoreCase("LLM HELP"))
   {
     processLlmUartCommand(command);
     return;
