@@ -279,6 +279,38 @@ static void processTtsUartCommand(const String &line)
   }
 }
 
+/**
+ * Tool handler callback for chatV3.
+ * Parses "<tool> filename content" from the LLM reply.
+ * Does NOT actually write to SPIFFS – just logs and returns success feedback.
+ * Returns empty String if no tool call is detected.
+ */
+static String llmToolHandler(const String &reply)
+{
+  String trimmed = reply;
+  trimmed.trim();
+  if (!trimmed.startsWith("<tool>"))
+  {
+    return String(); // not a tool call
+  }
+
+  String rest = trimmed.substring(strlen("<tool>"));
+  rest.trim();
+
+  int spaceIdx = rest.indexOf(' ');
+  if (spaceIdx <= 0)
+  {
+    Serial.println("Tool: invalid format, expected <tool> filename content");
+    return String(); // malformed – treat as final answer
+  }
+
+  String filename = rest.substring(0, spaceIdx);
+  String content = rest.substring(spaceIdx + 1);
+
+  Serial.printf("Tool: (simulated) wrote %d bytes to %s\n", content.length(), filename.c_str());
+  return "檔案 " + filename + " 已寫入";
+}
+
 static void processLlmUartCommand(const String &line)
 {
   String command = trimCopy(line);
@@ -296,7 +328,9 @@ static void processLlmUartCommand(const String &line)
   if (command.equalsIgnoreCase("LLM HELP"))
   {
     Serial.println("UART LLM commands:");
-    Serial.println("  LLM <text>            – send a message to OpenAI Chat API");
+    Serial.println("  LLM1 <text>           – single-turn chat (no history)");
+    Serial.println("  LLM2 <text>           – multi-turn chat (with history)");
+    Serial.println("  LLM3 <text>           – multi-turn chat with tool use (write files)");
     Serial.println("  LLM SYSTEM <prompt>   – set the system prompt");
     Serial.println("  LLM MODEL <name>      – change the model (e.g. gpt-4o)");
     Serial.println("  LLM RESET             – clear multi-turn conversation history");
@@ -333,7 +367,37 @@ static void processLlmUartCommand(const String &line)
     return;
   }
 
-  // Everything after "LLM " is the user message
+  // LLM3: multi-turn chat with tool-call loop
+  if (command.startsWith("LLM3 "))
+  {
+    String text = command.substring(strlen("LLM3 "));
+    text.trim();
+    if (text.length() == 0)
+    {
+      Serial.println("Usage: LLM3 <text>");
+      return;
+    }
+    Serial.printf("LLM3: sending \"%s\" ...\n", text.c_str());
+    unsigned long startTime = millis();
+    String reply = g_llm->chatV3(text.c_str(), llmToolHandler, 5);
+    unsigned long elapsed = millis() - startTime;
+
+    if (reply.length() > 0)
+    {
+      Serial.println();
+      Serial.println("--- Assistant (final) ---");
+      Serial.println(reply);
+      Serial.println("-------------------------");
+      Serial.printf("(total %lu ms)\n", elapsed);
+    }
+    else
+    {
+      Serial.println("LLM3: no reply or error occurred.");
+    }
+    return;
+  }
+
+  // LLM1 / LLM2: single-turn or multi-turn chat
   if (command.startsWith("LLM1 ")||command.startsWith("LLM2 "))
   {
     String text = command.substring(strlen("LLM"));
@@ -377,7 +441,7 @@ static void processLlmUartCommand(const String &line)
 static void handleUartWifiProvisioning(const String &line)
 {
   String command = trimCopy(line);
-  if (command.startsWith("LLM ") || command.startsWith("LLM1 ") || command.startsWith("LLM2 ") || command.equalsIgnoreCase("LLM HELP"))
+  if (command.startsWith("LLM ") || command.startsWith("LLM1 ") || command.startsWith("LLM2 ") || command.startsWith("LLM3 ") || command.equalsIgnoreCase("LLM HELP"))
   {
     processLlmUartCommand(command);
     return;
