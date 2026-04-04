@@ -1,4 +1,6 @@
 #include <Arduino.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include <WiFi.h>
 #include <Preferences.h>
 #include <driver/i2s.h>
@@ -548,7 +550,7 @@ void setup()
   Speaker *speaker = new Speaker(i2s_output);
 
   g_speaker = speaker;
-  g_llm = new OpenAILLM(OPENAI_API_KEY, "gpt-4o-mini");
+  g_llm = new OpenAILLM(OPENAI_API_KEY, OPENAI_LLM_MODEL);
 
   // indicator light to show when we are listening
   IndicatorLight *indicator_light = new IndicatorLight();
@@ -567,7 +569,7 @@ void setup()
   Serial.println("Skill system initialized.");
 
   // and the intent processor
-  IntentProcessor *intent_processor = new IntentProcessor(speaker);
+  IntentProcessor *intent_processor = new IntentProcessor(speaker, g_llm);
   /*
   intent_processor->addDevice("kitchen", GPIO_NUM_5);
   intent_processor->addDevice("bedroom", GPIO_NUM_21);
@@ -579,7 +581,7 @@ void setup()
 
   // set up the i2s sample writer task
   TaskHandle_t applicationTaskHandle;
-  xTaskCreate(applicationTask, "Application Task", 4096, application, 1, &applicationTaskHandle);
+  xTaskCreate(applicationTask, "Application Task", 16384, application, 1, &applicationTaskHandle);
 
   // start sampling from i2s device - use I2S_NUM_0 as that's the one that supports the internal ADC
 #ifdef USE_I2S_MIC_INPUT
