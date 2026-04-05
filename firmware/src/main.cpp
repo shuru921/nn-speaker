@@ -17,6 +17,7 @@
 #include "IndicatorLight.h"
 #include "AudioKitHAL.h"
 #include "OpenAILLM.h"
+#include "OpenAITTS.h"
 #include "SkillRegistry.h"
 #include "LedSkillHandler.h"
 
@@ -84,7 +85,9 @@ i2s_pin_config_t i2s_speaker_pins = {
     .data_in_num = I2S_PIN_NO_CHANGE};
 
 static Preferences g_wifiPrefs;
+static Preferences g_openaiPrefs;
 static String g_uartInputLine;
+static String g_openaiApiKey;
 static IndicatorLight *g_indicatorLight = nullptr;
 static Speaker *g_speaker = nullptr;
 static OpenAILLM *g_llm = nullptr;
@@ -123,6 +126,34 @@ static void clearWifiCredentials()
   g_wifiPrefs.begin("wifi", false);
   g_wifiPrefs.clear();
   g_wifiPrefs.end();
+}
+
+// --- OpenAI API key NVS helpers ---
+
+static void loadOpenAIKey()
+{
+  g_openaiPrefs.begin("openai", true);
+  g_openaiApiKey = g_openaiPrefs.getString("api_key", OPENAI_API_KEY);
+  g_openaiPrefs.end();
+}
+
+static bool saveOpenAIKey(const String &key)
+{
+  if (key.length() == 0)
+  {
+    return false;
+  }
+  g_openaiPrefs.begin("openai", false);
+  bool ok = g_openaiPrefs.putString("api_key", key) > 0;
+  g_openaiPrefs.end();
+  return ok;
+}
+
+static void clearOpenAIKey()
+{
+  g_openaiPrefs.begin("openai", false);
+  g_openaiPrefs.clear();
+  g_openaiPrefs.end();
 }
 
 static void processWifiUartCommand(const String &line)
@@ -442,9 +473,90 @@ static void processLlmUartCommand(const String &line)
   }
 }
 
+static void processKeyUartCommand(const String &line)
+{
+  String command = trimCopy(line);
+  if (command.length() == 0)
+  {
+    return;
+  }
+
+  if (command.equalsIgnoreCase("KEY HELP"))
+  {
+    Serial.println("UART KEY commands:");
+    Serial.println("  KEY SET <api_key>  – save OpenAI API key to NVS");
+    Serial.println("  KEY SHOW           – show first 8 chars of current key");
+    Serial.println("  KEY CLEAR          – clear saved key (revert to default)");
+    return;
+  }
+
+  if (command.equalsIgnoreCase("KEY SHOW"))
+  {
+    String display = g_openaiApiKey.substring(0, 8) + "...";
+    Serial.printf("Current OpenAI API key: %s\n", display.c_str());
+    Serial.printf("Key length: %d\n", g_openaiApiKey.length());
+    return;
+  }
+
+  if (command.equalsIgnoreCase("KEY CLEAR"))
+  {
+    clearOpenAIKey();
+    g_openaiApiKey = OPENAI_API_KEY;
+    // Update live objects
+    if (g_llm)
+    {
+      g_llm->setApiKey(g_openaiApiKey.c_str());
+    }
+    if (g_speaker && g_speaker->tts())
+    {
+      g_speaker->tts()->setApiKey(g_openaiApiKey.c_str());
+    }
+    Serial.println("OpenAI API key cleared. Reverted to default.");
+    return;
+  }
+
+  if (command.startsWith("KEY SET "))
+  {
+    String key = trimCopy(command.substring(strlen("KEY SET ")));
+    if (key.length() == 0)
+    {
+      Serial.println("API key cannot be empty.");
+      return;
+    }
+
+    if (saveOpenAIKey(key))
+    {
+      g_openaiApiKey = key;
+      // Update live objects
+      if (g_llm)
+      {
+        g_llm->setApiKey(g_openaiApiKey.c_str());
+      }
+      if (g_speaker && g_speaker->tts())
+      {
+        g_speaker->tts()->setApiKey(g_openaiApiKey.c_str());
+      }
+      String display = g_openaiApiKey.substring(0, 8) + "...";
+      Serial.printf("OpenAI API key saved: %s\n", display.c_str());
+    }
+    else
+    {
+      Serial.println("Failed to save OpenAI API key.");
+    }
+    return;
+  }
+
+  Serial.println("Unknown command. Type KEY HELP");
+}
+
 static void handleUartWifiProvisioning(const String &line)
 {
   String command = trimCopy(line);
+  if (command.startsWith("KEY ") || command.equalsIgnoreCase("KEY HELP"))
+  {
+    processKeyUartCommand(command);
+    return;
+  }
   if (command.startsWith("LLM ") || command.startsWith("LLM1 ") || command.startsWith("LLM2 ") || command.startsWith("LLM3 ") || command.equalsIgnoreCase("LLM HELP"))
   {
     processLlmUartCommand(command);
@@ -500,6 +612,7 @@ void setup()
   Serial.println("UART LED control enabled. Type LED HELP and press Enter.");
   Serial.println("UART TTS enabled. Type TTS HELP and press Enter.");
   Serial.println("UART LLM enabled. Type LLM HELP and press Enter.");
+  Serial.println("UART KEY management enabled. Type KEY HELP and press Enter.");
 
 #ifdef BOARD_HAS_PSRAM
   // Prefer external RAM for generic malloc to keep internal RAM for TLS handshake.
@@ -550,7 +663,14 @@ void setup()
   Speaker *speaker = new Speaker(i2s_output);
 
   g_speaker = speaker;
+
+  // Load OpenAI API key from NVS (falls back to config.h default)
+  loadOpenAIKey();
+  Serial.printf("OpenAI API key: %s...\n", g_openaiApiKey.substring(0, 8).c_str());
+
   g_llm = new OpenAILLM(OPENAI_API_KEY, OPENAI_LLM_MODEL);
+  g_llm->setApiKey(g_openaiApiKey.c_str());
+  g_speaker->tts()->setApiKey(g_openaiApiKey.c_str());
 
   // indicator light to show when we are listening
   IndicatorLight *indicator_light = new IndicatorLight();
