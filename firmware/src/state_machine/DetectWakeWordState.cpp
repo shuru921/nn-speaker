@@ -4,16 +4,18 @@
 #include "NeuralNetwork.h"
 #include "RingBuffer.h"
 #include "DetectWakeWordState.h"
+#include "../IndicatorLight.h"
 
 #define WINDOW_SIZE 320
 #define STEP_SIZE 160
 #define POOLING_SIZE 6
 #define AUDIO_LENGTH 16000
 
-DetectWakeWordState::DetectWakeWordState(I2SSampler *sample_provider)
+DetectWakeWordState::DetectWakeWordState(I2SSampler *sample_provider, IndicatorLight *indicator_light)
 {
     // save the sample provider for use later
     m_sample_provider = sample_provider;
+    m_indicator_light = indicator_light;
     // some stats on performance
     m_average_detect_time = 0;
     m_number_of_runs = 0;
@@ -22,6 +24,7 @@ DetectWakeWordState::DetectWakeWordState(I2SSampler *sample_provider)
 }
 void DetectWakeWordState::enterState()
 {
+    m_indicator_light->setState(OFF);
     // create our audio processor
     m_audio_processor = new AudioProcessor(AUDIO_LENGTH, WINDOW_SIZE, STEP_SIZE, POOLING_SIZE);
     Serial.println("Created audio processor");
@@ -64,8 +67,10 @@ bool DetectWakeWordState::run()
         m_number_of_runs = 0;
         Serial.printf("Average detection time %.fms\n", m_average_detect_time);
     }
+    // log every output to debug false positives
+    Serial.printf("output=%.4f\n", output);
     // use quite a high threshold to prevent false positives
-    if (output > 0.95)
+    if (output > 0.97)
     {
         m_number_of_detections++;
         if (m_number_of_detections > 1)
@@ -76,7 +81,8 @@ bool DetectWakeWordState::run()
 
             // detected the wake word in several runs, move to the next state
             Serial.printf("P(%.2f): Here I am, brain the size of a planet...\n", output);
-            
+            // light up LED immediately on wake word detection
+            m_indicator_light->setState(ON);
             return true;
         }
     }
