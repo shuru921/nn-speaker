@@ -9,7 +9,7 @@ class HTTPClient;
 class IndicatorLight;
 class Speaker;
 class IntentProcessor;
-class WitAiChunkedUploader;
+class JetsonUploader;
 
 class RecogniseCommandState : public State
 {
@@ -23,7 +23,7 @@ private:
     Speaker *m_speaker;
     IntentProcessor *m_intent_processor;
 
-    WitAiChunkedUploader *m_speech_recogniser;
+    JetsonUploader *m_speech_recogniser;
 
 public:
     RecogniseCommandState(I2SSampler *sample_provider, IndicatorLight *indicator_light, Speaker *speaker, IntentProcessor *intent_processor);

@@ -6,7 +6,7 @@
 #include "IndicatorLight.h"
 #include "Speaker.h"
 #include "IntentProcessor.h"
-#include "WitAiChunkedUploader.h"
+#include "JetsonUploader.h"
 #include "../config.h"
 #include <string.h>
 
@@ -38,7 +38,7 @@ void RecogniseCommandState::enterState()
     uint32_t free_ram = esp_get_free_heap_size();
     Serial.printf("Free ram before connection %d\n", free_ram);
 
-    m_speech_recogniser = new WitAiChunkedUploader(COMMAND_RECOGNITION_ACCESS_KEY);
+    m_speech_recogniser = new JetsonUploader(JETSON_IP, JETSON_PORT, 3);
 
     Serial.println("Ready for action");
 
@@ -65,24 +65,23 @@ bool RecogniseCommandState::run()
     // Serial.printf("Last sample position %d, current position %d, number samples %d\n", m_last_audio_position, audio_position, sample_count);
     if (sample_count > 0)
     {
-        // send the samples to the server
-        m_speech_recogniser->startChunk(sample_count * sizeof(int16_t));
+        // 收集音訊樣本到 JetsonUploader buffer
         RingBufferAccessor *reader = m_sample_provider->getRingBufferReader();
         reader->setIndex(m_last_audio_position);
-        // send the samples up in chunks
         int16_t sample_buffer[500];
-        while (sample_count > 0)
+        int remaining = sample_count;
+        while (remaining > 0)
         {
-            for (int i = 0; i < sample_count && i < 500; i++)
+            int batch = min(remaining, 500);
+            for (int i = 0; i < batch; i++)
             {
                 sample_buffer[i] = reader->getCurrentSample();
                 reader->moveToNextSample();
             }
-            m_speech_recogniser->sendChunkData((const uint8_t *)sample_buffer, std::min(sample_count, 500) * 2);
-            sample_count -= 500;
+            m_speech_recogniser->addSamples(sample_buffer, batch);
+            remaining -= batch;
         }
         m_last_audio_position = reader->getIndex();
-        m_speech_recogniser->finishChunk();
         delete (reader);
 
         // has 3 seconds passed?
@@ -91,13 +90,13 @@ bool RecogniseCommandState::run()
         m_start_time = current_time;
         if (m_elapsed_time > 3000)
         {
-            // indicate that we are now trying to understand the command
             m_indicator_light->setState(PULSING);
+            Serial.println("3 seconds elapsed - sending to Jetson ASR");
+            String text = m_speech_recogniser->sendAndGetText();
+            Serial.printf("Jetson ASR result: %s\n", text.c_str());
 
-            // all done, move to next state
-            Serial.println("3 seconds has elapsed - finishing recognition request");
-            // final new line to finish off the request
-            Intent intent = m_speech_recogniser->getResults();
+            Intent intent;
+            intent.text = text.c_str();
             IntentResult intentResult = m_intent_processor->processIntent(intent);
             switch (intentResult)
             {
@@ -108,10 +107,8 @@ bool RecogniseCommandState::run()
                 m_speaker->playCantDo();
                 break;
             case SILENT_SUCCESS:
-                // nothing to do
                 break;
             }
-            // indicate that we are done
             m_indicator_light->setState(OFF);
             return true;
         }

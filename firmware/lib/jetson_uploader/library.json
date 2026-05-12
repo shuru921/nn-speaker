@@ -1,0 +1,5 @@
+{
+  "name": "jetson_uploader",
+  "version": "1.0.0",
+  "description": "Send recorded WAV audio to Jetson Orin ASR service"
+}
