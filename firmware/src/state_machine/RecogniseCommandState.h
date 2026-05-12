@@ -28,7 +28,8 @@ private:
 public:
     RecogniseCommandState(I2SSampler *sample_provider, IndicatorLight *indicator_light, Speaker *speaker, IntentProcessor *intent_processor);
     void enterState();
-    bool run();
+    bool run();       // 持續收集音訊，不自動結束
+    void finish();    // 按鈕放開時呼叫：送出並處理結果
     void exitState();
 };
 

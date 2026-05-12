@@ -14,39 +14,43 @@ Application::Application(I2SSampler *sample_provider, IntentProcessor *intent_pr
     m_last_button_state = false;
     m_button_pin = RECORD_BUTTON_PIN;
 
-    // 設定按鈕為輸入（內部上拉）
     pinMode(m_button_pin, INPUT_PULLUP);
 
-    // 建立錄音狀態
     m_recognise_command_state = new RecogniseCommandState(
         sample_provider, indicator_light, speaker, intent_processor);
 
-    Serial.println("Ready - press button to record");
+    Serial.println("Ready - hold button to record, release to send");
 }
 
 void Application::run()
 {
-    // 讀取按鈕（LOW = 按下，因為 PULLUP）
     bool button_pressed = (digitalRead(m_button_pin) == LOW);
 
     if (m_app_state == IDLE)
     {
-        // 按鈕剛按下（偵測下降緣）
+        // 按鈕剛按下：開始錄音
         if (button_pressed && !m_last_button_state)
         {
-            Serial.println("Button pressed - start recording");
+            Serial.println("Recording...");
             m_app_state = RECORDING;
             m_recognise_command_state->enterState();
         }
     }
     else if (m_app_state == RECORDING)
     {
-        bool done = m_recognise_command_state->run();
-        if (done)
+        if (button_pressed)
         {
+            // 按住中：持續收集音訊
+            m_recognise_command_state->run();
+        }
+        else if (!button_pressed && m_last_button_state)
+        {
+            // 按鈕剛放開：送出並處理
+            Serial.println("Button released - sending...");
+            m_recognise_command_state->finish();
             m_recognise_command_state->exitState();
             m_app_state = IDLE;
-            Serial.println("Done - ready for next command");
+            Serial.println("Ready for next command");
         }
     }
 
