@@ -22,9 +22,15 @@
 #define I2S_SPEAKER_LEFT_RIGHT_CLOCK GPIO_NUM_12
 #define I2S_SPEAKER_SERIAL_DATA GPIO_NUM_27
 
-// Jetson Orin ASR 服務設定（使用 /process endpoint）
-#define JETSON_IP   "192.168.2.55"
-#define JETSON_PORT 8000
+// Jetson Orin ASR 服務設定
+// 模式 A：區域網路（HTTP）
+//   JETSON_USE_HTTPS false, HOST = IP, PORT = 8000
+// 模式 B：Demo 跨網路（HTTPS via ngrok）
+//   JETSON_USE_HTTPS true, HOST = ngrok domain, PORT = 443
+
+#define JETSON_USE_HTTPS false
+#define JETSON_HOST "192.168.2.55"   // ← ngrok 模式改成 "xxxx.ngrok-free.app"
+#define JETSON_PORT 8000              // ← ngrok 模式改成 443
 
 // 錄音觸發按鈕（按下開始錄音，放開停止）
 #define RECORD_BUTTON_PIN GPIO_NUM_34  // ← 可依實際接線修改

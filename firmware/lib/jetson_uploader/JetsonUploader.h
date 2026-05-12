@@ -1,27 +1,30 @@
 #pragma once
 #include <Arduino.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 
 // 收集音訊樣本並以 WAV 格式 POST 到 Jetson /process
+// 支援 HTTP（區域網路）和 HTTPS（ngrok）
 class JetsonUploader {
 public:
-    JetsonUploader(const char* jetson_ip, int port, int max_seconds = 3);
+    // use_https=false → 區域網路 HTTP
+    // use_https=true  → ngrok HTTPS（port 443）
+    JetsonUploader(const char* jetson_host, int port, int max_seconds = 10, bool use_https = false);
     ~JetsonUploader();
 
-    // 加入麥克風樣本（16-bit PCM, 16kHz）
     void addSamples(const int16_t* samples, int count);
-
-    // 錄音結束後傳送，回傳辨識文字（失敗回傳空字串）
     String sendAndGetText();
 
 private:
-    const char* m_jetson_ip;
+    const char* m_jetson_host;
     int m_port;
-    int16_t* m_audio_buffer;   // 存在 PSRAM
+    bool m_use_https;
+    int16_t* m_audio_buffer;
     int m_sample_count;
     int m_max_samples;
 
-    void writeWavHeader(WiFiClient& client, int data_bytes);
-    int buildMultipartHeader(char* buf, int audio_bytes);
+    void writeWavHeader(Print& client, int data_bytes);
+    String doRequest(Print& writer, Client& reader, int total_len,
+                     const String& part_header, const String& part_footer, int audio_bytes);
     static const char* BOUNDARY;
 };

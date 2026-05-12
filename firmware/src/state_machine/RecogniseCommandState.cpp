@@ -27,7 +27,7 @@ void RecogniseCommandState::enterState()
     m_indicator_light->setState(ON);
     m_speaker->playReady();
     m_last_audio_position = -1;
-    m_speech_recogniser = new JetsonUploader(JETSON_IP, JETSON_PORT, MAX_RECORD_SECONDS);
+    m_speech_recogniser = new JetsonUploader(JETSON_HOST, JETSON_PORT, MAX_RECORD_SECONDS, JETSON_USE_HTTPS);
     Serial.println("[ASR] Recording... release button to send");
 }
 
