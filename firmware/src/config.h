@@ -26,6 +26,9 @@
 #define JETSON_IP   "192.168.2.55"
 #define JETSON_PORT 8000
 
+// 錄音觸發按鈕（按下開始錄音，放開停止）
+#define RECORD_BUTTON_PIN GPIO_NUM_34  // ← 可依實際接線修改
+
 // command recognition settings (Wit.ai，已改為 Jetson，保留備用)
 //#define COMMAND_RECOGNITION_ACCESS_KEY "P5QMUSMFV6IRRSTABXFQ7UIXPFRMC4L5"
 #define COMMAND_RECOGNITION_ACCESS_KEY "N6HHFVXOVIZFCLAPEMC7LPDZ4KXONLSJ"

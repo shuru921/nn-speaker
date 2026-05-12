@@ -1,43 +1,55 @@
 #include <Arduino.h>
 #include "Application.h"
-#include "state_machine/DetectWakeWordState.h"
 #include "state_machine/RecogniseCommandState.h"
 #include "IndicatorLight.h"
 #include "Speaker.h"
 #include "IntentProcessor.h"
+#include "config.h"
 
 Application::Application(I2SSampler *sample_provider, IntentProcessor *intent_processor, Speaker *speaker, IndicatorLight *indicator_light)
 {
-    // detect wake word state - waits for the wake word to be detected
-    m_detect_wake_word_state = new DetectWakeWordState(sample_provider);
-    // command recongiser - streams audio to the server for recognition
-    m_recognise_command_state = new RecogniseCommandState(sample_provider, indicator_light, speaker, intent_processor);
-    // start off in the detecting wakeword state
-    m_current_state = m_detect_wake_word_state;
-    m_current_state->enterState();
     m_speaker = speaker;
+    m_indicator_light = indicator_light;
+    m_app_state = IDLE;
+    m_last_button_state = false;
+    m_button_pin = RECORD_BUTTON_PIN;
 
+    // 設定按鈕為輸入（內部上拉）
+    pinMode(m_button_pin, INPUT_PULLUP);
+
+    // 建立錄音狀態
+    m_recognise_command_state = new RecogniseCommandState(
+        sample_provider, indicator_light, speaker, intent_processor);
+
+    Serial.println("Ready - press button to record");
 }
 
-// process the next batch of samples
 void Application::run()
 {
-    bool state_done = m_current_state->run();
-    if (state_done)
+    // 讀取按鈕（LOW = 按下，因為 PULLUP）
+    bool button_pressed = (digitalRead(m_button_pin) == LOW);
+
+    if (m_app_state == IDLE)
     {
-        m_current_state->exitState();
-        // switch to the next state - very simple state machine so we just go to the other state...
-        if (m_current_state == m_detect_wake_word_state)
+        // 按鈕剛按下（偵測下降緣）
+        if (button_pressed && !m_last_button_state)
         {
-            m_current_state = m_recognise_command_state;
-            //m_current_state = m_detect_wake_word_state;
-            m_speaker->playOK();
+            Serial.println("Button pressed - start recording");
+            m_app_state = RECORDING;
+            m_recognise_command_state->enterState();
         }
-        else
-        {
-            m_current_state = m_detect_wake_word_state;
-        }
-        m_current_state->enterState();
     }
+    else if (m_app_state == RECORDING)
+    {
+        bool done = m_recognise_command_state->run();
+        if (done)
+        {
+            m_recognise_command_state->exitState();
+            m_app_state = IDLE;
+            Serial.println("Done - ready for next command");
+        }
+    }
+
+    m_last_button_state = button_pressed;
     vTaskDelay(10);
 }
