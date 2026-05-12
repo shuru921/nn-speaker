@@ -23,7 +23,7 @@
 #define I2S_SPEAKER_SERIAL_DATA GPIO_NUM_27
 
 // Jetson Orin ASR 服務設定（使用 /process endpoint）
-#define JETSON_IP   "192.168.1.100"   // ← 改成 Jetson 的實際 IP
+#define JETSON_IP   "192.168.2.55"
 #define JETSON_PORT 8000
 
 // command recognition settings (Wit.ai，已改為 Jetson，保留備用)

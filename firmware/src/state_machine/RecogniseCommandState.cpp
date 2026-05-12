@@ -47,10 +47,9 @@ void RecogniseCommandState::enterState()
 }
 bool RecogniseCommandState::run()
 {
-    if (!m_speech_recogniser || !m_speech_recogniser->connected())
+    if (!m_speech_recogniser)
     {
-        // no http client - something went wrong somewhere move to the next state as there's nothing for us to do
-        Serial.println("Error - Attempt to run with no http client");
+        Serial.println("Error - No speech recogniser");
         return true;
     }
     if (m_last_audio_position == -1)
