@@ -1,6 +1,5 @@
 #include <Arduino.h>
 #include "Application.h"
-#include "state_machine/RecogniseCommandState.h"
 #include "IndicatorLight.h"
 #include "Speaker.h"
 #include "IntentProcessor.h"
@@ -14,7 +13,8 @@ Application::Application(I2SSampler *sample_provider, IntentProcessor *intent_pr
     m_last_button_state = false;
     m_button_pin = RECORD_BUTTON_PIN;
 
-    pinMode(m_button_pin, INPUT_PULLUP);
+    // GPIO36 是 input-only，不支援 internal pull-up，直接設 INPUT
+    pinMode(m_button_pin, INPUT);
 
     m_recognise_command_state = new RecogniseCommandState(
         sample_provider, indicator_light, speaker, intent_processor);

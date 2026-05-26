@@ -2,11 +2,11 @@
 #define _applicaiton_h_
 
 #include "state_machine/States.h"
+#include "state_machine/RecogniseCommandState.h"
 #include <driver/gpio.h>
 
 class I2SSampler;
 class I2SOutput;
-class State;
 class IndicatorLight;
 class Speaker;
 class IntentProcessor;
@@ -19,7 +19,7 @@ typedef enum {
 class Application
 {
 private:
-    State *m_recognise_command_state;
+    RecogniseCommandState *m_recognise_command_state;
     AppState m_app_state;
     Speaker *m_speaker;
     IndicatorLight *m_indicator_light;

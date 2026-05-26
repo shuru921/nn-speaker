@@ -30,10 +30,11 @@
 
 #define JETSON_USE_HTTPS false
 #define JETSON_HOST "192.168.2.55"   // ← ngrok 模式改成 "xxxx.ngrok-free.app"
-#define JETSON_PORT 8000              // ← ngrok 模式改成 443
+#define JETSON_PORT 8080              // ← ngrok 模式改成 443
 
-// 錄音觸發按鈕（按下開始錄音，放開停止）
-#define RECORD_BUTTON_PIN GPIO_NUM_34  // ← 可依實際接線修改
+// 錄音觸發按鈕：LyraT v4.3 的 REC 觸控鍵（GPIO36 = PIN_KEY1）
+// GPIO36 是 input-only，不支援 INPUT_PULLUP，見 Application.cpp
+#define RECORD_BUTTON_PIN GPIO_NUM_36
 
 // command recognition settings (Wit.ai，已改為 Jetson，保留備用)
 //#define COMMAND_RECOGNITION_ACCESS_KEY "P5QMUSMFV6IRRSTABXFQ7UIXPFRMC4L5"
