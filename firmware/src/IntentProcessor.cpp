@@ -82,6 +82,9 @@ IntentResult IntentProcessor::processIntent(const Intent &intent)
     const bool has_open_keyword = intent.text.find("開") != std::string::npos;
     const bool has_close_keyword = intent.text.find("關") != std::string::npos;
     const bool has_light_keyword = intent.text.find("燈") != std::string::npos;
+    const bool has_inspect_keyword =
+        intent.text.find("檢查") != std::string::npos ||
+        intent.text.find("inspect") != std::string::npos;
 
     if (has_open_keyword && has_light_keyword)
     {
@@ -94,6 +97,13 @@ IntentResult IntentProcessor::processIntent(const Intent &intent)
     {
         Serial.printf("Turning off the light\n");
         m_speaker->playLightOff();
+        return SILENT_SUCCESS;
+    }
+
+    if (has_inspect_keyword)
+    {
+        Serial.printf("Inspection command sent to Jetson\n");
+        m_speaker->playOK();
         return SILENT_SUCCESS;
     }
 

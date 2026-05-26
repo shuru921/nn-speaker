@@ -28,9 +28,9 @@
 // 模式 B：Demo 跨網路（HTTPS via ngrok）
 //   JETSON_USE_HTTPS true, HOST = ngrok domain, PORT = 443
 
-#define JETSON_USE_HTTPS false
-#define JETSON_HOST "192.168.2.55"   // ← ngrok 模式改成 "xxxx.ngrok-free.app"
-#define JETSON_PORT 8080              // ← ngrok 模式改成 443
+#define JETSON_USE_HTTPS true
+#define JETSON_HOST "8b9e-61-216-173-101.ngrok-free.app"
+#define JETSON_PORT 443
 
 // 錄音觸發按鈕：LyraT v4.3 的 REC 觸控鍵（GPIO36 = PIN_KEY1）
 // GPIO36 是 input-only，不支援 INPUT_PULLUP，見 Application.cpp
