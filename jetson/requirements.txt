@@ -1,0 +1,26 @@
+# WebSocket 伺服器
+websockets>=12.0
+
+# LangChain 核心
+langchain>=0.2.0
+langchain-core>=0.2.0
+langchain-community>=0.2.0
+
+# LLM 支援（二選一）
+langchain-ollama>=0.1.0      # 本地 Qwen2.5 / Llama3（推薦 Jetson）
+langchain-openai>=0.1.0      # 雲端 GPT API（備用）
+
+# Embedding + RAG
+sentence-transformers>=3.0.0  # bge-m3 embedding
+faiss-gpu>=1.7.2              # Jetson GPU 版 FAISS（若無 GPU 改用 faiss-cpu）
+
+# 文件載入
+pypdf>=4.0.0                  # PDF
+openpyxl>=3.1.0               # Excel
+unstructured>=0.14.0          # 通用文件解析
+
+# AI 視覺（Phase 2+）
+ultralytics>=8.2.0            # YOLOv8
+
+# 報告
+# （使用標準庫 json，不需額外套件）
