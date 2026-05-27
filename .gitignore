@@ -158,3 +158,6 @@ speech_data
 *.model
 *.tflite
 logs
+
+# firmware secrets
+firmware/src/secrets.h

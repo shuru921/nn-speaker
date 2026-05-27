@@ -1,6 +1,5 @@
-// WiFi credentials
-#define WIFI_SSID "Ruby"
-#define WIFI_PSWD "87878787"
+// WiFi credentials — defined in secrets.h (not committed)
+#include "secrets.h"
 
 // are you using an I2S microphone - comment this out if you want to use an analog mic and ADC input
 #define USE_I2S_MIC_INPUT
@@ -28,9 +27,9 @@
 // 模式 B：Demo 跨網路（HTTPS via ngrok）
 //   JETSON_USE_HTTPS true, HOST = ngrok domain, PORT = 443
 
-#define JETSON_USE_HTTPS true
-#define JETSON_HOST "7f9e-61-216-173-1.ngrok-free.app"
-#define JETSON_PORT 443
+#define JETSON_USE_HTTPS false
+#define JETSON_HOST "192.168.2.55"
+#define JETSON_PORT 8000
 
 #define JETSON_WS_TIMEOUT_MS 30000   // 等待 Jetson WebSocket 回應上限（ms）
 
