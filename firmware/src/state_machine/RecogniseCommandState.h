@@ -4,11 +4,8 @@
 #include "States.h"
 
 class I2SSampler;
-class WiFiClient;
-class HTTPClient;
 class IndicatorLight;
 class Speaker;
-class IntentProcessor;
 class JetsonUploader;
 
 class RecogniseCommandState : public State
@@ -21,12 +18,11 @@ private:
 
     IndicatorLight *m_indicator_light;
     Speaker *m_speaker;
-    IntentProcessor *m_intent_processor;
 
     JetsonUploader *m_speech_recogniser;
 
 public:
-    RecogniseCommandState(I2SSampler *sample_provider, IndicatorLight *indicator_light, Speaker *speaker, IntentProcessor *intent_processor);
+    RecogniseCommandState(I2SSampler *sample_provider, IndicatorLight *indicator_light, Speaker *speaker);
     void enterState();
     bool run();       // 持續收集音訊，不自動結束
     void finish();    // 按鈕放開時呼叫：送出並處理結果

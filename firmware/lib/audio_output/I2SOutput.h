@@ -18,15 +18,23 @@ private:
     QueueHandle_t m_i2sQueue;
     // i2s port
     i2s_port_t m_i2sPort;
+    i2s_pin_config_t m_i2sPins;
+    i2s_config_t m_i2sConfig;
+    bool m_started;
     // src of samples for us to play
     SampleSource *m_sample_generator;
 
 public:
     I2SOutput()
     {
+        m_i2sWriterTaskHandle = NULL;
+        m_i2sQueue = NULL;
+        m_started = false;
         m_sample_generator = NULL;
     }
     void start(i2s_port_t i2sPort, i2s_pin_config_t &i2sPins, i2s_config_t i2sConfig);
+    void stop();
+    void resume();
     void setSampleGenerator(SampleSource *sample_generator);
     friend void i2sWriterTask(void *param);
 };

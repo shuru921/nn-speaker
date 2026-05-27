@@ -83,15 +83,71 @@ void I2SOutput::start(i2s_port_t i2sPort, i2s_pin_config_t &i2sPins, i2s_config_
         .fixed_mclk = 0};
     */
     m_i2sPort = i2sPort;
+    m_i2sPins = i2sPins;
+    m_i2sConfig = i2sConfig;
     //install and start i2s driver
-    i2s_driver_install(m_i2sPort, &i2sConfig, 4, &m_i2sQueue);
+    esp_err_t err = i2s_driver_install(m_i2sPort, &m_i2sConfig, 4, &m_i2sQueue);
+    if (err != ESP_OK)
+    {
+        Serial.printf("i2s output driver install failed: %d\n", err);
+        return;
+    }
     // set up the i2s pins
-    i2s_set_pin(m_i2sPort, &i2sPins);
+    err = i2s_set_pin(m_i2sPort, &m_i2sPins);
+    if (err != ESP_OK)
+    {
+        Serial.printf("i2s output set pin failed: %d\n", err);
+        i2s_driver_uninstall(m_i2sPort);
+        m_i2sQueue = NULL;
+        return;
+    }
     // clear the DMA buffers
     i2s_zero_dma_buffer(m_i2sPort);
     // start a task to write samples to the i2s peripheral
-    TaskHandle_t writerTaskHandle;
-    xTaskCreate(i2sWriterTask, "i2s Writer Task", 4096, this, 1, &writerTaskHandle);
+    BaseType_t task_ok = xTaskCreate(i2sWriterTask, "i2s Writer Task", 4096, this, 1, &m_i2sWriterTaskHandle);
+    if (task_ok != pdPASS)
+    {
+        m_i2sWriterTaskHandle = NULL;
+        Serial.printf("i2s Writer Task create failed: %ld\n", (long)task_ok);
+        i2s_driver_uninstall(m_i2sPort);
+        m_i2sQueue = NULL;
+        return;
+    }
+    m_started = true;
+}
+
+void I2SOutput::stop()
+{
+    m_sample_generator = NULL;
+    if (m_i2sWriterTaskHandle)
+    {
+        TaskHandle_t task = m_i2sWriterTaskHandle;
+        m_i2sWriterTaskHandle = NULL;
+        vTaskDelete(task);
+        Serial.println("i2s Writer Task stopped");
+    }
+    if (m_started)
+    {
+        esp_err_t err = i2s_driver_uninstall(m_i2sPort);
+        if (err != ESP_OK)
+        {
+            Serial.printf("i2s output driver uninstall failed: %d\n", err);
+        }
+        else
+        {
+            Serial.println("i2s output driver stopped");
+        }
+        m_i2sQueue = NULL;
+        m_started = false;
+    }
+}
+
+void I2SOutput::resume()
+{
+    if (!m_started)
+    {
+        start(m_i2sPort, m_i2sPins, m_i2sConfig);
+    }
 }
 
 void I2SOutput::setSampleGenerator(SampleSource *sample_generator)

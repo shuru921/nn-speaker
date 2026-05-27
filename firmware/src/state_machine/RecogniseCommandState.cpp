@@ -1,24 +1,21 @@
 #include <Arduino.h>
-#include <ArduinoJson.h>
+#include <esp_heap_caps.h>
 #include "I2SSampler.h"
 #include "RingBuffer.h"
 #include "RecogniseCommandState.h"
 #include "IndicatorLight.h"
 #include "Speaker.h"
-#include "IntentProcessor.h"
 #include "JetsonUploader.h"
 #include "../config.h"
-#include <string.h>
 
-// 最長錄音秒數（防止按住太久塞爆記憶體）
 #define MAX_RECORD_SECONDS 10
+#define RECORD_DURATION_MS 5000
 
-RecogniseCommandState::RecogniseCommandState(I2SSampler *sample_provider, IndicatorLight *indicator_light, Speaker *speaker, IntentProcessor *intent_processor)
+RecogniseCommandState::RecogniseCommandState(I2SSampler *sample_provider, IndicatorLight *indicator_light, Speaker *speaker)
 {
-    m_sample_provider = sample_provider;
-    m_indicator_light = indicator_light;
-    m_speaker = speaker;
-    m_intent_processor = intent_processor;
+    m_sample_provider   = sample_provider;
+    m_indicator_light   = indicator_light;
+    m_speaker           = speaker;
     m_speech_recogniser = NULL;
 }
 
@@ -27,11 +24,12 @@ void RecogniseCommandState::enterState()
     m_indicator_light->setState(ON);
     m_speaker->playReady();
     m_last_audio_position = -1;
+    m_start_time   = millis();
+    m_elapsed_time = 0;
     m_speech_recogniser = new JetsonUploader(JETSON_HOST, JETSON_PORT, MAX_RECORD_SECONDS, JETSON_USE_HTTPS);
-    Serial.println("[ASR] Recording... release button to send");
+    Serial.println("[ASR] Recording...");
 }
 
-// 持續收集音訊，不自動結束
 bool RecogniseCommandState::run()
 {
     if (!m_speech_recogniser) return true;
@@ -40,7 +38,9 @@ bool RecogniseCommandState::run()
         m_last_audio_position = m_sample_provider->getCurrentWritePosition() - 16000;
 
     int audio_position = m_sample_provider->getCurrentWritePosition();
-    int sample_count = (audio_position - m_last_audio_position + m_sample_provider->getRingBufferSize()) % m_sample_provider->getRingBufferSize();
+    int sample_count   = (audio_position - m_last_audio_position
+                          + m_sample_provider->getRingBufferSize())
+                         % m_sample_provider->getRingBufferSize();
 
     if (sample_count > 0)
     {
@@ -61,41 +61,51 @@ bool RecogniseCommandState::run()
         }
         m_last_audio_position = reader->getIndex();
         delete reader;
+
+        unsigned long now = millis();
+        m_elapsed_time += now - m_start_time;
+        m_start_time = now;
+
+        if (m_elapsed_time > RECORD_DURATION_MS)
+        {
+            finish();
+            return true;
+        }
     }
-    return false; // 不自動結束，等 finish() 呼叫
+    return false;
 }
 
-// 按鈕放開時呼叫：送出音訊並處理結果
 void RecogniseCommandState::finish()
 {
     if (!m_speech_recogniser) return;
 
     m_indicator_light->setState(PULSING);
-    Serial.println("[ASR] Sending to Jetson...");
-
-    String text = m_speech_recogniser->sendAndGetText();
-    Serial.printf("[ASR] Result: %s\n", text.c_str());
-
-    Intent intent;
-    intent.text = text.c_str();
-    IntentResult intentResult = m_intent_processor->processIntent(intent);
-    switch (intentResult)
-    {
-    case SUCCESS:
-        m_speaker->playOK();
-        break;
-    case FAILED:
-        m_speaker->playCantDo();
-        break;
-    case SILENT_SUCCESS:
-        break;
-    }
+    m_sample_provider->stop();
+    m_speaker->stopOutput();
+    Serial.printf("[ASR] Internal heap before HTTPS: free=%u largest=%u\n",
+                  heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                  heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+    m_speech_recogniser->sendAudio();   // 送出 WAV，不等回應
+    Serial.printf("[ASR] Internal heap after HTTPS: free=%u largest=%u\n",
+                  heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                  heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+    m_speaker->resumeOutput();
+    m_sample_provider->resume();
+    m_speaker->playOK();
     m_indicator_light->setState(OFF);
+
+    // 釋放 uploader，exitState() 不需要再 delete
+    delete m_speech_recogniser;
+    m_speech_recogniser = NULL;
 }
 
 void RecogniseCommandState::exitState()
 {
-    delete m_speech_recogniser;
-    m_speech_recogniser = NULL;
+    // m_speech_recogniser 已在 finish() 轉給 task，通常為 NULL
+    if (m_speech_recogniser)
+    {
+        delete m_speech_recogniser;
+        m_speech_recogniser = NULL;
+    }
     Serial.printf("[ASR] Free heap: %d\n", esp_get_free_heap_size());
 }

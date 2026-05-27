@@ -9,7 +9,6 @@
 #include "config.h"
 #include "Application.h"
 #include "SPIFFS.h"
-#include "IntentProcessor.h"
 #include "Speaker.h"
 #include "IndicatorLight.h"
 #include "AudioKitHAL.h"
@@ -112,20 +111,21 @@ void setup()
   Serial.println("Starting up");
 
 #ifdef BOARD_HAS_PSRAM
-  // Prefer external RAM for generic malloc to keep internal RAM for TLS handshake.
-  heap_caps_malloc_extmem_enable(0);
+  heap_caps_malloc_extmem_enable(32768);
 #endif
 
   // start up wifi
   // launch WiFi
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PSWD);
-  if (WiFi.waitForConnectResult() != WL_CONNECTED)
+  uint8_t wifi_status = WiFi.waitForConnectResult();
+  if (wifi_status != WL_CONNECTED)
   {
-    Serial.println("Connection Failed! Rebooting...");
+    Serial.printf("Connection failed, status=%d. Rebooting...\n", wifi_status);
     delay(5000);
-    //ESP.restart();
+    ESP.restart();
   }
+  Serial.printf("WiFi connected, IP: %s\n", WiFi.localIP().toString().c_str());
   Serial.printf("Total heap: %d\n", ESP.getHeapSize());
   Serial.printf("Free heap: %d\n", ESP.getFreeHeap());
   Serial.printf("Total PSRAM: %d\n", ESP.getPsramSize());
@@ -157,20 +157,19 @@ void setup()
   // indicator light to show when we are listening
   IndicatorLight *indicator_light = new IndicatorLight();
 
-  // and the intent processor
-  IntentProcessor *intent_processor = new IntentProcessor(speaker);
-  /*
-  intent_processor->addDevice("kitchen", GPIO_NUM_5);
-  intent_processor->addDevice("bedroom", GPIO_NUM_21);
-  intent_processor->addDevice("table", GPIO_NUM_23);
-  */
-
   // create our application
-  Application *application = new Application(i2s_sampler, intent_processor, speaker, indicator_light);
+  Application *application = new Application(i2s_sampler, speaker, indicator_light);
 
   // set up the i2s sample writer task
   TaskHandle_t applicationTaskHandle;
-  xTaskCreate(applicationTask, "Application Task", 4096, application, 1, &applicationTaskHandle);
+  // Keep this task stack modest so mbedTLS has a larger contiguous internal heap block.
+  BaseType_t app_task_ok = xTaskCreate(applicationTask, "Application Task", 8192, application, 1, &applicationTaskHandle);
+  if (app_task_ok != pdPASS)
+  {
+    Serial.printf("Application task create failed: %ld\n", (long)app_task_ok);
+    delay(5000);
+    ESP.restart();
+  }
 
   // start sampling from i2s device - use I2S_NUM_0 as that's the one that supports the internal ADC
 #ifdef USE_I2S_MIC_INPUT
@@ -178,6 +177,8 @@ void setup()
 #else
   i2s_sampler->start(I2S_NUM_0, adcI2SConfig, applicationTaskHandle);
 #endif
+
+  application->begin();
 }
 
 void loop()

@@ -1,5 +1,4 @@
 #include "JetsonUploader.h"
-#include <ArduinoJson.h>
 
 const char* JetsonUploader::BOUNDARY = "----ESP32Boundary";
 
@@ -31,25 +30,23 @@ void JetsonUploader::addSamples(const int16_t* samples, int count) {
     m_sample_count += to_copy;
 }
 
-void JetsonUploader::writeWavHeader(Print& client, int data_bytes) {
+void JetsonUploader::buildWavHeader(uint8_t hdr[WAV_HEADER_SZ], int data_bytes) {
     int byte_rate   = SAMPLE_RATE * CHANNELS * (BITS / 8);
     int block_align = CHANNELS * (BITS / 8);
     int chunk_size  = 36 + data_bytes;
-    uint8_t hdr[WAV_HEADER_SZ];
-    memcpy(hdr,      "RIFF", 4); memcpy(hdr+4,  &chunk_size,  4);
-    memcpy(hdr+8,    "WAVE", 4);
-    memcpy(hdr+12,   "fmt ", 4); int s1=16; memcpy(hdr+16, &s1, 4);
-    int16_t fmt=1;  memcpy(hdr+20, &fmt, 2);
+    memcpy(hdr,    "RIFF", 4); memcpy(hdr+4,  &chunk_size,  4);
+    memcpy(hdr+8,  "WAVE", 4);
+    memcpy(hdr+12, "fmt ", 4); int s1=16; memcpy(hdr+16, &s1, 4);
+    int16_t fmt=1; memcpy(hdr+20, &fmt, 2);
     int16_t ch=CHANNELS; memcpy(hdr+22, &ch, 2);
     memcpy(hdr+24, &SAMPLE_RATE, 4); memcpy(hdr+28, &byte_rate, 4);
     int16_t ba=block_align; memcpy(hdr+32, &ba, 2);
     int16_t bps=BITS; memcpy(hdr+34, &bps, 2);
     memcpy(hdr+36, "data", 4); memcpy(hdr+40, &data_bytes, 4);
-    client.write(hdr, WAV_HEADER_SZ);
 }
 
-String JetsonUploader::sendAndGetText() {
-    if (!m_audio_buffer || m_sample_count == 0) return "";
+void JetsonUploader::sendAudio() {
+    if (!m_audio_buffer || m_sample_count == 0) return;
 
     int audio_bytes = m_sample_count * sizeof(int16_t);
     int wav_bytes   = WAV_HEADER_SZ + audio_bytes;
@@ -61,74 +58,89 @@ String JetsonUploader::sendAndGetText() {
     String part_footer = String("\r\n--") + BOUNDARY + "--\r\n";
     int total_len = part_header.length() + wav_bytes + part_footer.length();
 
-    String body = "";
+    uint8_t wav_hdr[WAV_HEADER_SZ];
+    buildWavHeader(wav_hdr, audio_bytes);
 
-    if (m_use_https) {
-        // HTTPS（ngrok）
-        WiFiClientSecure client;
-        client.setInsecure(); // Demo 用，不驗證憑證
-        client.setTimeout(15);
-        if (!client.connect(m_jetson_host, m_port)) {
-            Serial.printf("[Jetson] HTTPS connect failed: %s:%d\n", m_jetson_host, m_port);
-            return "";
+    auto writeAll = [](Client& c, const uint8_t* data, size_t len) {
+        size_t written = 0;
+        while (written < len) {
+            size_t n = c.write(data + written, len - written);
+            if (n == 0) {
+                return false;
+            }
+            written += n;
         }
+        return true;
+    };
+
+    auto sendOverClient = [&](Client& client) {
         client.printf("POST /process HTTP/1.1\r\n");
         client.printf("Host: %s\r\n", m_jetson_host);
         client.printf("ngrok-skip-browser-warning: true\r\n");
         client.printf("Content-Type: multipart/form-data; boundary=%s\r\n", BOUNDARY);
         client.printf("Content-Length: %d\r\n", total_len);
         client.printf("Connection: close\r\n\r\n");
-        client.print(part_header);
-        writeWavHeader(client, audio_bytes);
+
+        if (!writeAll(client, (uint8_t*)part_header.c_str(), part_header.length()) ||
+            !writeAll(client, wav_hdr, WAV_HEADER_SZ)) {
+            Serial.println("[Jetson] upload failed while sending WAV header");
+            client.stop();
+            return;
+        }
+
         uint8_t* ptr = (uint8_t*)m_audio_buffer;
-        for (int sent = 0; sent < audio_bytes; sent += 1024) {
-            client.write(ptr + sent, min(1024, audio_bytes - sent));
-            delay(1);
+        for (int sent = 0; sent < audio_bytes; sent += 4096) {
+            int chunk = min(4096, audio_bytes - sent);
+            if (!writeAll(client, ptr + sent, chunk)) {
+                Serial.printf("[Jetson] upload failed after %d/%d audio bytes\n", sent, audio_bytes);
+                client.stop();
+                return;
+            }
         }
-        client.print(part_footer);
-        unsigned long t = millis();
-        while (!client.available() && millis() - t < 10000) delay(10);
-        while (client.connected()) {
-            String line = client.readStringUntil('\n');
-            if (line == "\r") break;
+
+        if (!writeAll(client, (uint8_t*)part_footer.c_str(), part_footer.length())) {
+            Serial.println("[Jetson] upload failed while sending multipart footer");
+            client.stop();
+            return;
         }
-        body = client.readString();
+        client.flush();
+
+        String response;
+        unsigned long deadline = millis() + 10000;
+        while ((client.connected() || client.available()) && millis() < deadline) {
+            while (client.available() && response.length() < 512) {
+                response += (char)client.read();
+            }
+            if (response.length() >= 512) {
+                break;
+            }
+            delay(10);
+        }
+
         client.stop();
+        Serial.printf("[Jetson] audio sent (%d bytes WAV)\n", wav_bytes);
+        if (response.length() > 0) {
+            Serial.printf("[Jetson] response:\n%s\n", response.c_str());
+        } else {
+            Serial.println("[Jetson] no HTTP response before timeout");
+        }
+    };
+
+    if (m_use_https) {
+        WiFiClientSecure client;
+        client.setInsecure();
+        client.setTimeout(15);
+        if (!client.connect(m_jetson_host, m_port)) {
+            Serial.printf("[Jetson] HTTPS connect failed: %s:%d\n", m_jetson_host, m_port);
+            return;
+        }
+        sendOverClient(client);
     } else {
-        // HTTP（區域網路）
         WiFiClient client;
         if (!client.connect(m_jetson_host, m_port)) {
             Serial.printf("[Jetson] HTTP connect failed: %s:%d\n", m_jetson_host, m_port);
-            return "";
+            return;
         }
-        client.printf("POST /process HTTP/1.1\r\n");
-        client.printf("Host: %s:%d\r\n", m_jetson_host, m_port);
-        client.printf("Content-Type: multipart/form-data; boundary=%s\r\n", BOUNDARY);
-        client.printf("Content-Length: %d\r\n", total_len);
-        client.printf("Connection: close\r\n\r\n");
-        client.print(part_header);
-        writeWavHeader(client, audio_bytes);
-        uint8_t* ptr = (uint8_t*)m_audio_buffer;
-        for (int sent = 0; sent < audio_bytes; sent += 1024) {
-            client.write(ptr + sent, min(1024, audio_bytes - sent));
-            delay(1);
-        }
-        client.print(part_footer);
-        unsigned long t = millis();
-        while (!client.available() && millis() - t < 10000) delay(10);
-        while (client.connected()) {
-            String line = client.readStringUntil('\n');
-            if (line == "\r") break;
-        }
-        body = client.readString();
-        client.stop();
+        sendOverClient(client);
     }
-
-    Serial.printf("[Jetson] Response: %s\n", body.c_str());
-    StaticJsonDocument<512> doc;
-    if (deserializeJson(doc, body) == DeserializationError::Ok) {
-        const char* text = doc["text"];
-        return text ? String(text) : "";
-    }
-    return "";
 }

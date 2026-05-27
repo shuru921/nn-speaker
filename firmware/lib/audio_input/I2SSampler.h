@@ -41,6 +41,8 @@ protected:
 public:
     I2SSampler();
     void start(i2s_port_t i2s_port, i2s_config_t &i2s_config, TaskHandle_t processor_task_handle);
+    void stop();
+    void resume();
 
     RingBufferAccessor *getRingBufferReader();
 

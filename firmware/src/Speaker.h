@@ -27,6 +27,8 @@ public:
     void playLightOff();
     void playRandomJoke();
     void playLife();
+    void stopOutput();
+    void resumeOutput();
 };
 
 #endif

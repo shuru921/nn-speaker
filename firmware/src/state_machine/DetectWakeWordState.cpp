@@ -64,15 +64,18 @@ bool DetectWakeWordState::run()
         m_number_of_runs = 0;
         Serial.printf("Average detection time %.fms\n", m_average_detect_time);
     }
-    // use quite a high threshold to prevent false positives
-    if (output > 0.95)
+    // 分數超過 0.5 時印出，方便調整門檻
+    if (output > 0.5)
+    {
+        Serial.printf("[WakeWord] score=%.2f\n", output);
+    }
+
+    if (output > 0.90)
     {
         m_number_of_detections++;
         if (m_number_of_detections > 1)
         {
             m_number_of_detections = 0;
-            uint32_t free_ram = esp_get_free_heap_size();
-            Serial.printf("Free ram after DetectWakeWord cleanup %d\n", free_ram);
 
             // detected the wake word in several runs, move to the next state
             Serial.printf("P(%.2f): Here I am, brain the size of a planet...\n", output);

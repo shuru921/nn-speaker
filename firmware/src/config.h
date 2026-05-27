@@ -1,6 +1,6 @@
 // WiFi credentials
-#define WIFI_SSID "hsc48"
-#define WIFI_PSWD "04124572"
+#define WIFI_SSID "Ruby"
+#define WIFI_PSWD "87878787"
 
 // are you using an I2S microphone - comment this out if you want to use an analog mic and ADC input
 #define USE_I2S_MIC_INPUT
@@ -29,8 +29,10 @@
 //   JETSON_USE_HTTPS true, HOST = ngrok domain, PORT = 443
 
 #define JETSON_USE_HTTPS true
-#define JETSON_HOST "8b9e-61-216-173-101.ngrok-free.app"
+#define JETSON_HOST "7f9e-61-216-173-1.ngrok-free.app"
 #define JETSON_PORT 443
+
+#define JETSON_WS_TIMEOUT_MS 30000   // 等待 Jetson WebSocket 回應上限（ms）
 
 // 錄音觸發按鈕：LyraT v4.3 的 REC 觸控鍵（GPIO36 = PIN_KEY1）
 // GPIO36 是 input-only，不支援 INPUT_PULLUP，見 Application.cpp

@@ -74,3 +74,13 @@ void Speaker::playLife()
     m_life->reset();
     m_i2s_output->setSampleGenerator(m_life);
 }
+
+void Speaker::stopOutput()
+{
+    m_i2s_output->stop();
+}
+
+void Speaker::resumeOutput()
+{
+    m_i2s_output->resume();
+}

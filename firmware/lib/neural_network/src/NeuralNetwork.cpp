@@ -5,6 +5,7 @@
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
+#include "esp_heap_caps.h"
 
 // approximate working size of our model
 const int kArenaSize = 25000;
@@ -13,7 +14,7 @@ NeuralNetwork::NeuralNetwork()
 {
     m_error_reporter = new tflite::MicroErrorReporter();
 
-    m_tensor_arena = (uint8_t *)malloc(kArenaSize);
+    m_tensor_arena = (uint8_t *)heap_caps_aligned_alloc(16, kArenaSize, MALLOC_CAP_8BIT);
     if (!m_tensor_arena)
     {
         TF_LITE_REPORT_ERROR(m_error_reporter, "Could not allocate arena");
@@ -64,7 +65,7 @@ NeuralNetwork::~NeuralNetwork()
 {
     delete m_interpreter;
     delete m_resolver;
-    free(m_tensor_arena);
+    heap_caps_free(m_tensor_arena);
     delete m_error_reporter;
 }
 

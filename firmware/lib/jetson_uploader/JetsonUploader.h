@@ -13,7 +13,7 @@ public:
     ~JetsonUploader();
 
     void addSamples(const int16_t* samples, int count);
-    String sendAndGetText();
+    void sendAudio();
 
 private:
     const char* m_jetson_host;
@@ -23,8 +23,6 @@ private:
     int m_sample_count;
     int m_max_samples;
 
-    void writeWavHeader(Print& client, int data_bytes);
-    String doRequest(Print& writer, Client& reader, int total_len,
-                     const String& part_header, const String& part_footer, int audio_bytes);
+    void buildWavHeader(uint8_t hdr[44], int data_bytes);
     static const char* BOUNDARY;
 };

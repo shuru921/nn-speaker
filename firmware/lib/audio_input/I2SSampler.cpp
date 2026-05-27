@@ -18,6 +18,7 @@ void I2SSampler::addSample(int16_t sample)
 void i2sReaderTask(void *param)
 {
     I2SSampler *sampler = (I2SSampler *)param;
+    Serial.println("RX task started");
     while (true)
     {
         // wait for some data to arrive on the queue
@@ -26,14 +27,19 @@ void i2sReaderTask(void *param)
         {
             if (1)//(evt.type == I2S_EVENT_RX_DONE)
             {
-                Serial.println("RX start");
                 size_t bytesRead = 0;
                 do
                 {
                     // read data from the I2S peripheral
                     uint8_t i2sData[1024];
                     // read from i2s
-                    i2s_read(sampler->getI2SPort(), i2sData, 1024, &bytesRead, 10);
+                    esp_err_t err = i2s_read(sampler->getI2SPort(), i2sData, 1024, &bytesRead, 10);
+                    if (err != ESP_OK)
+                    {
+                        Serial.printf("i2s_read failed: %d\n", err);
+                        vTaskDelay(pdMS_TO_TICKS(1000));
+                        break;
+                    }
                     // process the raw data
                     sampler->processI2SData(i2sData, bytesRead);
                 } while (bytesRead > 0);
@@ -50,6 +56,7 @@ I2SSampler::I2SSampler()
         m_audio_buffers[i] = new AudioBuffer();
     }
     m_write_ring_buffer_accessor = new RingBufferAccessor(m_audio_buffers, AUDIO_BUFFER_COUNT);
+    m_reader_task_handle = NULL;
 }
 
 void I2SSampler::start(i2s_port_t i2s_port, i2s_config_t &i2s_config, TaskHandle_t processor_task_handle)
@@ -62,7 +69,36 @@ void I2SSampler::start(i2s_port_t i2s_port, i2s_config_t &i2s_config, TaskHandle
     // set up the I2S configuration from the subclass
 //    configureI2S();
     // start a task to read samples
-    xTaskCreate(i2sReaderTask, "i2s Reader Task", 4096, this, 1, &m_reader_task_handle);
+    BaseType_t task_ok = xTaskCreate(i2sReaderTask, "i2s Reader Task", 4096, this, 1, &m_reader_task_handle);
+    if (task_ok != pdPASS)
+    {
+        m_reader_task_handle = NULL;
+        Serial.printf("i2s Reader Task create failed: %ld\n", (long)task_ok);
+    }
+}
+
+void I2SSampler::stop()
+{
+    if (m_reader_task_handle)
+    {
+        TaskHandle_t task = m_reader_task_handle;
+        m_reader_task_handle = NULL;
+        vTaskDelete(task);
+        Serial.println("i2s Reader Task stopped");
+    }
+}
+
+void I2SSampler::resume()
+{
+    if (!m_reader_task_handle)
+    {
+        BaseType_t task_ok = xTaskCreate(i2sReaderTask, "i2s Reader Task", 4096, this, 1, &m_reader_task_handle);
+        if (task_ok != pdPASS)
+        {
+            m_reader_task_handle = NULL;
+            Serial.printf("i2s Reader Task resume failed: %ld\n", (long)task_ok);
+        }
+    }
 }
 
 RingBufferAccessor *I2SSampler::getRingBufferReader()
