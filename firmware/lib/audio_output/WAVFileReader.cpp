@@ -27,25 +27,30 @@ typedef struct
 
 WAVFileReader::WAVFileReader(const char *file_name, bool repeat)
 {
+    m_repeat = repeat;
+    m_num_channels = 1;
+    m_valid = false;
+
     m_file = SPIFFS.open(file_name, "r");
-    // read the WAV header
+    if (!m_file) {
+        Serial.printf("[WAV] File not found: %s\n", file_name);
+        return;
+    }
+
     wav_header_t wav_header;
     m_file.read((uint8_t *)&wav_header, sizeof(wav_header_t));
-    // sanity check the bit depth
-    if (wav_header.bit_depth != 16)
-    {
-        Serial.printf("ERROR: bit depth %d is not supported please use 16 bit signed integer\n", wav_header.bit_depth);
-    }
-    if (wav_header.sample_rate != 16000)
-    {
-        Serial.printf("ERROR: bit depth %d is not supported please us 16KHz\n", wav_header.sample_rate);
-    }
 
-    Serial.printf("fmt_chunk_size=%d, audio_format=%d, num_channels=%d, sample_rate=%d, sample_alignment=%d, bit_depth=%d, data_bytes=%d\n",
-                  wav_header.fmt_chunk_size, wav_header.audio_format, wav_header.num_channels, wav_header.sample_rate, wav_header.sample_alignment, wav_header.bit_depth, wav_header.data_bytes);
+    if (wav_header.bit_depth != 16) {
+        Serial.printf("[WAV] %s: unsupported bit depth %d\n", file_name, wav_header.bit_depth);
+        return;
+    }
+    if (wav_header.sample_rate != 16000) {
+        Serial.printf("[WAV] %s: unsupported sample rate %d\n", file_name, wav_header.sample_rate);
+        return;
+    }
 
     m_num_channels = wav_header.num_channels;
-    m_repeat = repeat;
+    m_valid = true;
 }
 
 WAVFileReader::~WAVFileReader()
@@ -61,6 +66,7 @@ void WAVFileReader::reset()
 
 int WAVFileReader::getFrames(Frame_t *frames, int number_frames)
 {
+    if (!m_valid) return 0;
     // fill the buffer with data from the file wrapping around if necessary
     for (int i = 0; i < number_frames; i++)
     {
@@ -95,5 +101,6 @@ int WAVFileReader::getFrames(Frame_t *frames, int number_frames)
 
 bool WAVFileReader::available()
 {
+    if (!m_valid) return false;
     return m_file.available() || m_repeat;
 }

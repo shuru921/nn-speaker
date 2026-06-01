@@ -10,6 +10,7 @@ class WAVFileReader : public SampleSource
 private:
     int m_num_channels;
     bool m_repeat;
+    bool m_valid;
     File m_file;
 
 public:
@@ -17,6 +18,7 @@ public:
     ~WAVFileReader();
     int getFrames(Frame_t *frames, int number_frames);
     bool available();
+    bool isValid() { return m_valid; }
     void reset();
 };
 

@@ -65,8 +65,13 @@ void Speaker::playLightOff()
 
 void Speaker::playRandomJoke()
 {
-    int joke = random(5);
-    m_i2s_output->setSampleGenerator(m_jokes[joke]);
+    for (int attempt = 0; attempt < 5; attempt++) {
+        int joke = random(5);
+        if (m_jokes[joke]->isValid()) {
+            m_i2s_output->setSampleGenerator(m_jokes[joke]);
+            return;
+        }
+    }
 }
 
 void Speaker::playLife()
